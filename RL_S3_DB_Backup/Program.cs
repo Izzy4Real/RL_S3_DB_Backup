@@ -83,7 +83,7 @@ namespace UploadDirectoryWithMetadata
                 string key = String.Empty;
 
                 //for testing:
-                key += "BackupTest/";
+                //key += "BackupTest/";
 
                 key += parentFolderNameAgg + "/" + file.Name;
 
