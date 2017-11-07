@@ -3,7 +3,10 @@ using Amazon.S3;
 using Amazon.S3.Model;
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Diagnostics;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace UploadDirectoryWithMetadata
 {
@@ -13,6 +16,7 @@ namespace UploadDirectoryWithMetadata
 
         static void Main(string[] args)
         {
+            Console.WriteLine();
             System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)(3072);
 
             //var appSettings = ConfigurationManager.AppSettings;
@@ -56,48 +60,63 @@ namespace UploadDirectoryWithMetadata
             //}
             parentDirectory = new DirectoryInfo(rootFolderPath);
 
-            Console.WriteLine("Uploading...");
-            Console.WriteLine();
+            //Console.WriteLine("Uploading...");
+            //Console.WriteLine();
 
 
             //this will be the name of the folder in S3
             string parentFolderNameAgg = parentDirectory.Name;
 
-            //Stopwatch sw = Stopwatch.StartNew();
+            Stopwatch sw = Stopwatch.StartNew();
 
             UploadFilesInFolderWithMetadata(parentDirectory, parentFolderNameAgg);
 
             //for testing
-            //Console.WriteLine(sw.Elapsed);
-            //Console.ReadKey(true);
+            Console.WriteLine(sw.Elapsed);
+            Console.ReadKey(true);
         }
 
         static void UploadFilesInFolderWithMetadata(DirectoryInfo parentFolder, string parentFolderNameAgg)
         {
-            //string bucketName = ConfigurationManager.AppSettings["bucketName"];
+            IEnumerable<FileInfo> files = parentFolder.GetFiles().Where(fi => fi.Extension != ".zip");
 
-            foreach (FileInfo file in parentFolder.GetFiles())
+            string archiveName = parentFolder.FullName + "\\TempArchive.zip";
+
+            foreach (FileInfo file in files)
             {
                 //the S3 Key for this file
-
                 string key = String.Empty;
 
                 //for testing:
-                //key += "BackupTest/";
+                key += "BackupTest/";
 
-                key += parentFolderNameAgg + "/" + file.Name;
+                ////old code
+                //key += parentFolderNameAgg + "/" + file.Name;
 
-                //for testing
-                //Console.WriteLine(file.Name);
+                ////new code
+                key += parentFolderNameAgg + "/";
+                key += Path.GetFileNameWithoutExtension(file.Name) + ".zip";
+
+                Console.Write("Verifying status of {0}...", file.Name);
 
                 //Check to see if the file has been modified since the last time it was uploaded to S3.
                 //If it has not been modified, move to the next file.
                 if (!BeenModified(file, key))
                 {
+                    Console.WriteLine("Up to date.");
+                    Console.WriteLine();
                     continue;
                 }
+                Console.WriteLine("Done");
 
-                Console.WriteLine(file.Name);
+                Console.Write("Zipping {0}...", file.Name);
+                using (Stream archiveStream = File.Create(archiveName))
+                using (ZipArchive archive = new ZipArchive(archiveStream, ZipArchiveMode.Update))
+                {
+                    //zip the file to the archive
+                    ZipArchiveEntry entry = archive.CreateEntryFromFile(file.FullName, file.Name);
+                }
+                Console.WriteLine("Done.");
 
                 //prepare the request, including the original creation time of the file
                 var pRequest = new PutObjectRequest
@@ -105,7 +124,10 @@ namespace UploadDirectoryWithMetadata
                     //BucketName = bucketName,
                     BucketName = _bucketName,
                     Key = key,
-                    FilePath = file.FullName,
+                    ////old code
+                    FilePath = archiveName
+                    ////new code
+                    //FilePath=
                     //StorageClass = S3StorageClass.StandardInfrequentAccess
                 };
 
@@ -113,20 +135,37 @@ namespace UploadDirectoryWithMetadata
                 //pRequest.Metadata.Add("creation-time", file.CreationTime.ToString());
                 pRequest.Metadata.Add("last-write-time", file.LastWriteTime.ToString());
 
+                Console.Write("Uploading {0}...", file.Name);
                 try
                 {
-                    //upload to S3
+                    ////upload to S3
                     using (var client = new AmazonS3Client(Amazon.RegionEndpoint.USEast1))
                     {
+                        //_client.PutObject(pRequest);
                         client.PutObject(pRequest);
                     }
+                    Console.WriteLine("Done.");
                 }
                 catch (Exception ex)
                 {
                     PrintErrorMessageUpload(ex, key);
                     LogException(ex, key);
                 }
+                Console.WriteLine();
             }
+
+            Console.Write("Clearing archive...");
+            //clean up the archive
+            using (Stream archiveStream = File.Open(archiveName, FileMode.OpenOrCreate))
+            using (ZipArchive archive = new ZipArchive(archiveStream, ZipArchiveMode.Update))
+            {
+                ZipArchiveEntry entry = archive.Entries.FirstOrDefault();
+                if (entry != null)
+                {
+                    entry.Delete();
+                }
+            }
+            Console.WriteLine("Done.");
 
             //recurse not necessary on production machine
             //foreach (DirectoryInfo directory in parentFolder.GetDirectories())
@@ -174,6 +213,7 @@ namespace UploadDirectoryWithMetadata
                 GetObjectMetadataResponse lResponse;
                 using (var client = new AmazonS3Client(Amazon.RegionEndpoint.USEast1))
                 {
+                    //lResponse = _client.GetObjectMetadata(_bucketName, key);
                     lResponse = client.GetObjectMetadata(_bucketName, key);
                 }
 
@@ -188,15 +228,16 @@ namespace UploadDirectoryWithMetadata
 
                 //return true if file last write time is later than the last write time in the S3 backup.
                 return simpleLastWriteTime > s3LastWriteTime;
-                
+
             }
             catch (Exception ex)
             {
                 //if something went wrong, print and log the exception, then return true as if the file has been modified.
                 //that way, the file will be backed up now, and will recieve last write time metadata from this point.
                 string message = "An error occured while verifying the last write times of file: " +
-                                 file.FullName + ".\n" +"The Metadata in S3 may be corrupted.";
-                PrintCustomErrorMessage(ex,message);
+                                 file.FullName + ".\n" + "The Metadata in S3 may be corrupted.\n" +
+                                 "If this is the first time this file is being uploaded, ignore this error.";
+                PrintCustomErrorMessage(ex, message);
                 LogException(ex, file.FullName);
 
                 return true;
