@@ -67,13 +67,13 @@ namespace UploadDirectoryWithMetadata
             //this will be the name of the folder in S3
             string parentFolderNameAgg = parentDirectory.Name;
 
-            Stopwatch sw = Stopwatch.StartNew();
+            //Stopwatch sw = Stopwatch.StartNew();
 
             UploadFilesInFolderWithMetadata(parentDirectory, parentFolderNameAgg);
 
             //for testing
-            Console.WriteLine(sw.Elapsed);
-            Console.ReadKey(true);
+            //Console.WriteLine(sw.Elapsed);
+            //Console.ReadKey(true);
         }
 
         static void UploadFilesInFolderWithMetadata(DirectoryInfo parentFolder, string parentFolderNameAgg)
@@ -88,12 +88,8 @@ namespace UploadDirectoryWithMetadata
                 string key = String.Empty;
 
                 //for testing:
-                key += "BackupTest/";
+                //key += "BackupTest/";
 
-                ////old code
-                //key += parentFolderNameAgg + "/" + file.Name;
-
-                ////new code
                 key += parentFolderNameAgg + "/";
                 key += Path.GetFileNameWithoutExtension(file.Name) + ".zip";
 
@@ -121,13 +117,9 @@ namespace UploadDirectoryWithMetadata
                 //prepare the request, including the original creation time of the file
                 var pRequest = new PutObjectRequest
                 {
-                    //BucketName = bucketName,
                     BucketName = _bucketName,
                     Key = key,
-                    ////old code
                     FilePath = archiveName
-                    ////new code
-                    //FilePath=
                     //StorageClass = S3StorageClass.StandardInfrequentAccess
                 };
 
@@ -138,7 +130,7 @@ namespace UploadDirectoryWithMetadata
                 Console.Write("Uploading {0}...", file.Name);
                 try
                 {
-                    ////upload to S3
+                    //upload to S3
                     using (var client = new AmazonS3Client(Amazon.RegionEndpoint.USEast1))
                     {
                         //_client.PutObject(pRequest);
@@ -220,8 +212,6 @@ namespace UploadDirectoryWithMetadata
                 //parse to a datetime
                 DateTime s3LastWriteTime = DateTime.Parse(lResponse.Metadata["last-write-time"]);
 
-                //FileInfo.LastWriteTime is accurate to the nearest tick (one ten millionth of a second).
-                //we didn't store the last write time in S3 so precisely - just to the nearest second.
                 //convert the file's last write time into a date time accurate to the nearest second.
                 string simpleLastWriteTimeString = file.LastWriteTime.ToString();
                 DateTime simpleLastWriteTime = DateTime.Parse(simpleLastWriteTimeString);
