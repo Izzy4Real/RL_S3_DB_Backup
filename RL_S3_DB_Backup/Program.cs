@@ -97,13 +97,27 @@ namespace UploadDirectoryWithMetadata
 
                 //Check to see if the file has been modified since the last time it was uploaded to S3.
                 //If it has not been modified, move to the next file.
-                if (!BeenModified(file, key))
+                try
                 {
-                    Console.WriteLine("Up to date.");
-                    Console.WriteLine();
-                    continue;
+                    if (!BeenModified(file, key))
+                    {
+                        Console.WriteLine("Up to date.");
+                        Console.WriteLine();
+                        continue;
+                    }
+                    //if the file has been modified, zip and upload it (after catch block)...
+                    Console.WriteLine("Done");
                 }
-                Console.WriteLine("Done");
+                //if checking the last write time didn't work for some reason, log the error...
+                catch (Exception ex)
+                {
+                    string message = "An error occured while verifying the last write time of file " +
+                        file.Name + ". The metadata in S3 may be corrupted. See error log for more details." + "\n" +
+                        //S3 always returns an error to a metadata request for a file that has not yet been uploaded:
+                        "If this is the first time this file is being uploaded, ignore this error.";
+                    PrintCustomErrorMessage(message);
+                    LogException(ex, file.Name);
+                }//...and zip and upload the file to ensure that there will be an up-to-date backup of this file:
 
                 Console.Write("Zipping {0}...", file.Name);
                 using (Stream archiveStream = File.Create(archiveName))
@@ -199,39 +213,23 @@ namespace UploadDirectoryWithMetadata
 
         private static bool BeenModified(FileInfo file, string key)
         {
-            try
+            //get the last write time from the metadata (will be a string)
+            GetObjectMetadataResponse lResponse;
+            using (var client = new AmazonS3Client(Amazon.RegionEndpoint.USEast1))
             {
-                //get the last write time from the metadata (will be a string)
-                GetObjectMetadataResponse lResponse;
-                using (var client = new AmazonS3Client(Amazon.RegionEndpoint.USEast1))
-                {
-                    //lResponse = _client.GetObjectMetadata(_bucketName, key);
-                    lResponse = client.GetObjectMetadata(_bucketName, key);
-                }
-
-                //parse to a datetime
-                DateTime s3LastWriteTime = DateTime.Parse(lResponse.Metadata["last-write-time"]);
-
-                //convert the file's last write time into a date time accurate to the nearest second.
-                string simpleLastWriteTimeString = file.LastWriteTime.ToString();
-                DateTime simpleLastWriteTime = DateTime.Parse(simpleLastWriteTimeString);
-
-                //return true if file last write time is later than the last write time in the S3 backup.
-                return simpleLastWriteTime > s3LastWriteTime;
-
+                //lResponse = _client.GetObjectMetadata(_bucketName, key);
+                lResponse = client.GetObjectMetadata(_bucketName, key);
             }
-            catch (Exception ex)
-            {
-                //if something went wrong, print and log the exception, then return true as if the file has been modified.
-                //that way, the file will be backed up now, and will recieve last write time metadata from this point.
-                string message = "An error occured while verifying the last write times of file: " +
-                                 file.FullName + ".\n" + "The Metadata in S3 may be corrupted.\n" +
-                                 "If this is the first time this file is being uploaded, ignore this error.";
-                PrintCustomErrorMessage(ex, message);
-                LogException(ex, file.FullName);
 
-                return true;
-            }
+            //parse to a datetime
+            DateTime s3LastWriteTime = DateTime.Parse(lResponse.Metadata["last-write-time"]);
+
+            //convert the file's last write time into a date time accurate to the nearest second.
+            string simpleLastWriteTimeString = file.LastWriteTime.ToString();
+            DateTime simpleLastWriteTime = DateTime.Parse(simpleLastWriteTimeString);
+
+            //return true if file last write time is later than the last write time in the S3 backup.
+            return simpleLastWriteTime > s3LastWriteTime;
         }
 
         //private static void Setup()
@@ -279,6 +277,11 @@ namespace UploadDirectoryWithMetadata
             return Console.ReadLine();
         }
 
+        private static void PrintCustomErrorMessage(string message)
+        {
+            Console.WriteLine();
+            Console.WriteLine(message);
+        }
         private static void PrintErrorMessageUpload(Exception ex, string fileName)
         {
             Console.WriteLine();
