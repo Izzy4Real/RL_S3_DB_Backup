@@ -160,17 +160,9 @@ namespace UploadDirectoryWithMetadata
                 Console.WriteLine();
             }
 
-            Console.Write("Clearing archive...");
-            //clean up the archive
-            using (Stream archiveStream = File.Open(archiveName, FileMode.OpenOrCreate))
-            using (ZipArchive archive = new ZipArchive(archiveStream, ZipArchiveMode.Update))
-            {
-                ZipArchiveEntry entry = archive.Entries.FirstOrDefault();
-                if (entry != null)
-                {
-                    entry.Delete();
-                }
-            }
+            //delete temp archive
+            File.Delete(archiveName);
+
             Console.WriteLine("Done.");
 
             //recurse not necessary on production machine
