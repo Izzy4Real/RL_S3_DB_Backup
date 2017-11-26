@@ -19,54 +19,16 @@ namespace UploadDirectoryWithMetadata
             Console.WriteLine();
             System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)(3072);
 
-            //var appSettings = ConfigurationManager.AppSettings;
-
-            ////if app.config appsettings section AWSProfilesLocation is empty...
-            //if (String.IsNullOrEmpty(appSettings["AWSProfilesLocation"]))
-            //{
-            //    //do initial setup
-            //    Setup();
-            //}
-
-            ////if user wants to change settings
-            //if (Prompt("Enter '1' to start setup. Press enter to skip setup") == "1")
-            //{
-            //    Setup();
-            //}
-
             DirectoryInfo parentDirectory;
-            //while (true)
-            //{
-            //    string rootFolderPath = //@"C:\Users\Avshalom Gotlib\Documents\Job Search\Remote Landlord\AWS\RLDocuments_Use_S3\TenantDocs";
-            //                            Prompt("Enter absolute path of directory to upload:");
-            //    Console.WriteLine();
-
-            //    if (Directory.Exists(rootFolderPath))
-            //    {
-            //        parentDirectory = new DirectoryInfo(rootFolderPath);
-            //        break;
-            //    }
-
-            //    Console.WriteLine("Folder not found. Please check the path of the folder.");
-            //    Console.WriteLine();
-            //}
+           
             string rootFolderPath = args[0];
 
-            //if (!Directory.Exists(rootFolderPath))
-            //{
-            //    Console.WriteLine("Folder not found. Please check the path of the folder.");
-            //    Console.WriteLine();
-            //    continue;
-            //}
             parentDirectory = new DirectoryInfo(rootFolderPath);
-
-            //Console.WriteLine("Uploading...");
-            //Console.WriteLine();
-
 
             //this will be the name of the folder in S3
             string parentFolderNameAgg = parentDirectory.Name;
 
+            //for testing
             //Stopwatch sw = Stopwatch.StartNew();
 
             UploadFilesInFolderWithMetadata(parentDirectory, parentFolderNameAgg);
@@ -222,51 +184,6 @@ namespace UploadDirectoryWithMetadata
 
             //return true if file last write time is later than the last write time in the S3 backup.
             return simpleLastWriteTime > s3LastWriteTime;
-        }
-
-        //private static void Setup()
-        //{
-        //    Console.WriteLine();
-        //    Console.WriteLine("-----Setup-----");
-
-        //    var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
-        //    var settings = configFile.AppSettings.Settings;
-
-        //    while (true)
-        //    {
-        //        string credentialsFileLocation = Prompt("Enter absolute path of credentials file (press enter to skip this step):");
-        //        if (String.IsNullOrEmpty(credentialsFileLocation))
-        //        {
-        //            break;
-        //        }
-        //        if (File.Exists(credentialsFileLocation))
-        //        {
-        //            settings["AWSProfilesLocation"].Value = credentialsFileLocation;
-        //            Console.WriteLine();
-        //            break;
-        //        }
-
-        //        Console.WriteLine("File not found. Please check the file path.");
-        //        Console.WriteLine();
-        //    }
-
-        //    string bucketName = Prompt("Enter destination bucket name (press enter to skip this step):");
-        //    if (!String.IsNullOrEmpty(bucketName))
-        //    {
-        //        settings["bucketName"].Value = bucketName;
-        //    }
-
-        //    configFile.Save();
-        //    ConfigurationManager.RefreshSection("appSettings");
-
-        //    Console.WriteLine("-----Setup Complete-----");
-        //    Console.WriteLine();
-        //}
-
-        static string Prompt(string text)
-        {
-            Console.WriteLine(text);
-            return Console.ReadLine();
         }
 
         private static void PrintCustomErrorMessage(string message)
