@@ -20,7 +20,7 @@ namespace UploadDirectoryWithMetadata
             System.Net.ServicePointManager.SecurityProtocol = (System.Net.SecurityProtocolType)(3072);
 
             DirectoryInfo parentDirectory;
-           
+
             string rootFolderPath = args[0];
 
             parentDirectory = new DirectoryInfo(rootFolderPath);
@@ -55,6 +55,7 @@ namespace UploadDirectoryWithMetadata
                 key += parentFolderNameAgg + "/";
                 key += Path.GetFileNameWithoutExtension(file.Name) + ".zip";
 
+                #region BeenModified
                 Console.Write("Verifying status of {0}...", file.Name);
 
                 //Check to see if the file has been modified since the last time it was uploaded to S3.
@@ -74,49 +75,52 @@ namespace UploadDirectoryWithMetadata
                 catch (Exception ex)
                 {
                     string message = "An error occured while verifying the last write time of file " +
-                        file.Name + ". The metadata in S3 may be corrupted. See error log for more details." + "\n" +
-                        //S3 always returns an error to a metadata request for a file that has not yet been uploaded:
-                        "If this is the first time this file is being uploaded, ignore this error.";
+                                     file.Name + ". The metadata in S3 may be corrupted.";
                     PrintCustomErrorMessage(message);
                     LogException(ex, file.Name);
+
+                    //S3 always returns an error to a metadata request for a file that has not yet been uploaded:
+                    Console.WriteLine("If this file has not yet been uploaded to S3, ignore this error.");
+
                 }//...and zip and upload the file to ensure that there will be an up-to-date backup of this file:
+                #endregion
 
-                Console.Write("Zipping {0}...", file.Name);
-                using (Stream archiveStream = File.Create(archiveName))
-                using (ZipArchive archive = new ZipArchive(archiveStream, ZipArchiveMode.Update))
-                {
-                    //zip the file to the archive
-                    ZipArchiveEntry entry = archive.CreateEntryFromFile(file.FullName, file.Name);
-                }
-                Console.WriteLine("Done.");
-
-                //prepare the request, including the original creation time of the file
-                var pRequest = new PutObjectRequest
-                {
-                    BucketName = _bucketName,
-                    Key = key,
-                    FilePath = archiveName
-                    //StorageClass = S3StorageClass.StandardInfrequentAccess
-                };
-
-                //do we want creation time or Last write time?
-                //pRequest.Metadata.Add("creation-time", file.CreationTime.ToString());
-                pRequest.Metadata.Add("last-write-time", file.LastWriteTime.ToString());
-
-                Console.Write("Uploading {0}...", file.Name);
                 try
                 {
+                    Console.Write("Zipping {0}...", file.Name);
+
+                    //zip the file to a temporary compressed archive
+                    using (Stream archiveStream = File.Create(archiveName))
+                    using (ZipArchive archive = new ZipArchive(archiveStream, ZipArchiveMode.Create))
+                    {
+                        ZipArchiveEntry entry = archive.CreateEntryFromFile(file.FullName, file.Name);
+                    }
+                    Console.WriteLine("Done.");
+
+                    Console.Write("Uploading {0}...", file.Name);
+
+                    //prepare the request, including the last write time in the metadata
+                    var pRequest = new PutObjectRequest
+                    {
+                        BucketName = _bucketName,
+                        Key = key,
+                        FilePath = archiveName
+                        //StorageClass = S3StorageClass.StandardInfrequentAccess
+                    };
+                    pRequest.Metadata.Add("last-write-time", file.LastWriteTime.ToString());
+
                     //upload to S3
                     using (var client = new AmazonS3Client(Amazon.RegionEndpoint.USEast1))
                     {
-                        //_client.PutObject(pRequest);
                         client.PutObject(pRequest);
                     }
                     Console.WriteLine("Done.");
                 }
                 catch (Exception ex)
                 {
-                    PrintErrorMessageUpload(ex, key);
+                    string message = "An error occured while zipping or uploading... " +
+                                     file.Name + " may not have been uploaded.";
+                    PrintCustomErrorMessage(message);
                     LogException(ex, key);
                 }
                 Console.WriteLine();
@@ -127,6 +131,7 @@ namespace UploadDirectoryWithMetadata
 
             Console.WriteLine("Done.");
 
+            #region recurse
             //recurse not necessary on production machine
             //foreach (DirectoryInfo directory in parentFolder.GetDirectories())
             //{
@@ -163,6 +168,7 @@ namespace UploadDirectoryWithMetadata
             //    //recurse through the folder
             //    UploadFilesInFolderWithMetadata(directory, parentFolderNameAgg + "/" + directory.Name);
             //}
+            #endregion
         }
 
         private static bool BeenModified(FileInfo file, string key)
@@ -190,12 +196,13 @@ namespace UploadDirectoryWithMetadata
         {
             Console.WriteLine();
             Console.WriteLine(message);
+            Console.WriteLine("See Error Log for more details.");
         }
         private static void PrintErrorMessageUpload(Exception ex, string fileName)
         {
             Console.WriteLine();
-            Console.WriteLine("An error occured while uploading: " + fileName);
-            Console.WriteLine("See Error Log for more details");
+            Console.WriteLine("An error occured while uploading... " + fileName + " may not have been uploaded.");
+            Console.WriteLine("See Error Log for more details.");
             Console.WriteLine(ex);
             Console.WriteLine();
         }
@@ -216,7 +223,7 @@ namespace UploadDirectoryWithMetadata
             string errorLog = Path.GetFullPath("ErrorLog.txt");
             StreamWriter writer = new StreamWriter(errorLog, true);
             writer.WriteLine("********** {0} **********", DateTime.Now);
-            writer.WriteLine("An error occured while uploading " + fileName);
+            writer.WriteLine("An error occured while processing " + fileName);
             if (ex.InnerException != null)
             {
                 writer.Write("Inner Exception Type: ");
